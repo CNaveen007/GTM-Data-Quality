@@ -147,7 +147,7 @@ Start with a short summary:
 
 Then provide the detailed findings:
 
-| Record ID | Account | Field | Issue Type | Severity | Current Value | Why It Was Flagged | Recommended Action |
+| Record ID | Account | Field | Issue Type | Severity | Current Value | Reason | Recommended Action |
 |---|---|---|---|---|---|---|---|
 
 Recommended actions:
