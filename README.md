@@ -1,2 +1,2 @@
 # GTM-Data-Quality
-GTM data quality skill for auditing account and contact records and flagging issues for review.
+A GTM data quality skill that audits account and contact records for missing, invalid, stale, or conflicting information, explains the issues found, and recommends practical fixes for review.
