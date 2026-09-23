@@ -105,6 +105,9 @@ Use these issue types:
 - Duplicate
 - Conflict
 - Stale
+- Review
+
+Use `Review` when the value is unusual or potentially incorrect but the available data is not enough to confirm that it is actually wrong.
 
 Use:
 
