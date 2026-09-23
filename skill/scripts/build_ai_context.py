@@ -10,28 +10,44 @@ def load_findings(path):
     with path.open(newline="", encoding="utf-8-sig") as file:
         return list(csv.DictReader(file))
 def build_context(records, findings):
-    records_by_id = {
-        row.get("record_id", "").strip(): row
-        for row in records
-        if row.get("record_id")
-    }
-    findings_by_id = {}
-    for finding in findings:
-        record_id = finding.get("record_id", "").strip()
+    records_by_id = {}
+    for row_number, row in enumerate(records, start=2):
+        record_id = (row.get("record_id") or "").strip()
         if not record_id:
-            continue
+            raise ValueError(f"Source row {row_number}: record_id is required.")
+        if record_id in records_by_id:
+            raise ValueError(f"Source row {row_number}: duplicate record_id '{record_id}'.")
+        records_by_id[record_id] = row
+    findings_by_id = {}
+    conflict_accounts = set()
+    for row_number, finding in enumerate(findings, start=2):
+        record_id = (finding.get("record_id") or "").strip()
+        if not record_id:
+            raise ValueError(f"Finding row {row_number}: record_id is required.")
+        if record_id not in records_by_id:
+            raise ValueError(
+                f"Finding row {row_number}: record_id '{record_id}' "
+                "does not exist in source records."
+            )
         findings_by_id.setdefault(record_id, []).append(finding)
+        if finding.get("issue_type") == "Conflict" and finding.get("field") == "company_domain":
+            account = (records_by_id[record_id].get("account_name") or "").strip().lower()
+            if account:
+                conflict_accounts.add(account)
     reviewed_records = []
     for record_id, record_findings in findings_by_id.items():
-        record = records_by_id.get(record_id)
-        if not record:
-            continue
+        record = records_by_id[record_id]
         reviewed_records.append(
             {
                 "record": record,
                 "findings": record_findings,
             }
         )
+    # Include account peers as evidence even when they have no findings themselves.
+    for record_id, record in records_by_id.items():
+        account = (record.get("account_name") or "").strip().lower()
+        if account in conflict_accounts and record_id not in findings_by_id:
+            reviewed_records.append({"record": record, "findings": []})
     issue_counts = {}
     for finding in findings:
         issue_type = finding.get("issue_type", "Unknown")
@@ -46,7 +62,7 @@ def build_context(records, findings):
             "findings and recommending practical next steps."
         ),
         "records_reviewed": len(records),
-        "records_with_findings": len(reviewed_records),
+        "records_with_findings": len(findings_by_id),
         "total_findings": len(findings),
         "findings_by_type": issue_counts,
         "findings_by_severity": severity_counts,
@@ -87,7 +103,10 @@ def main():
         )
     records = load_csv(records_path)
     findings = load_findings(findings_path)
-    context = build_context(records, findings)
+    try:
+        context = build_context(records, findings)
+    except ValueError as error:
+        raise SystemExit(f"Error: {error}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as file:
         json.dump(context, file, indent=2)

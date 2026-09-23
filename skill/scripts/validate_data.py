@@ -56,9 +56,16 @@ def add_finding(findings, row, field, issue_type, severity, reason, action):
         }
     )
 def validate_rows(rows, as_of, stale_days):
+    seen_ids = set()
+    for row_number, row in enumerate(rows, start=2):
+        record_id = (row.get("record_id") or "").strip()
+        if not record_id:
+            raise ValueError(f"Row {row_number}: record_id is required.")
+        if record_id in seen_ids:
+            raise ValueError(f"Row {row_number}: duplicate record_id '{record_id}'.")
+        seen_ids.add(record_id)
     findings = []
     for row in rows:
-        account = row.get("account_name", "").strip()
         company_domain = normalize(row.get("company_domain"))
         email = normalize(row.get("contact_email"))
         # Completeness checks
@@ -98,7 +105,7 @@ def validate_rows(rows, as_of, stale_days):
                 "Verify the contact email before outreach.",
             )
         # Employee count
-        employee_value = row.get("employee_count", "").strip()
+        employee_value = (row.get("employee_count") or "").strip()
         if employee_value:
             try:
                 employee_count = int(employee_value)
@@ -193,6 +200,31 @@ def validate_rows(rows, as_of, stale_days):
                     ),
                     "Review and refresh the record.",
                 )
+    return findings
+def find_account_conflicts(rows):
+    domains_by_account = {}
+    for row in rows:
+        account = normalize(row.get("account_name"))
+        domain = normalize(row.get("company_domain"))
+        if account and domain:
+            domains_by_account.setdefault(account, set()).add(domain)
+    findings = []
+    for row in rows:
+        account = normalize(row.get("account_name"))
+        domains = domains_by_account.get(account, set())
+        if len(domains) > 1:
+            add_finding(
+                findings,
+                row,
+                "company_domain",
+                "Conflict",
+                "Medium",
+                (
+                    f"Account name '{account}' is associated with multiple "
+                    f"company domains: {', '.join(sorted(domains))}."
+                ),
+                "Review the account and confirm the correct company domain.",
+            )
     return findings
 def find_duplicates(rows):
     findings = []
@@ -318,17 +350,32 @@ def main():
         raise SystemExit("Error: --as-of must use YYYY-MM-DD format.")
     if not input_path.exists():
         raise SystemExit(f"Error: input file not found: {input_path}")
+    if output_path.resolve() == input_path.resolve() or (
+        output_path.exists() and output_path.samefile(input_path)
+    ):
+        raise SystemExit("Error: output path must be different from input path.")
     with input_path.open(newline="", encoding="utf-8-sig") as file:
         reader = csv.DictReader(file)
-        rows = list(reader)
         missing_columns = REQUIRED_COLUMNS - set(reader.fieldnames or [])
         if missing_columns:
             raise SystemExit(
                 "Error: missing expected columns: "
                 + ", ".join(sorted(missing_columns))
             )
-    findings = validate_rows(rows, as_of, args.stale_days)
+        rows = []
+        for row in reader:
+            if None in row or any(value is None for value in row.values()):
+                raise SystemExit(
+                    f"Error: malformed CSV row ending at line {reader.line_num}: "
+                    "number of cells does not match the header."
+                )
+            rows.append(row)
+    try:
+        findings = validate_rows(rows, as_of, args.stale_days)
+    except ValueError as error:
+        raise SystemExit(f"Error: {error}")
     findings.extend(find_duplicates(rows))
+    findings.extend(find_account_conflicts(rows))
     write_findings(findings, output_path)
     category_counts = Counter(item["issue_type"] for item in findings)
     severity_counts = Counter(item["severity"] for item in findings)
