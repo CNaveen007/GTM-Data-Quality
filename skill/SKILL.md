@@ -9,6 +9,14 @@ This skill helps review account and contact data before it is used by sales or r
 
 The goal is simple: find records that look incomplete, incorrect, outdated, or inconsistent and make it clear what should be reviewed.
 
+## When to use this skill
+
+Use this skill to audit a GTM account and contact CSV and recommend a reviewable cleanup plan.
+
+Example request:
+
+"Audit data/gtm_accounts_contacts.csv for GTM data-quality issues."
+
 ## Input
 
 The skill reads a CSV with account and contact information.
@@ -29,9 +37,45 @@ The current dataset includes:
 - `phone_number`
 - `last_updated`
 
-The available columns may change, so check the file before running the audit.
+These columns are required by the current validator. Check the file before running the audit.
+
+## How to run it
+
+Run the commands from the repository root. Replace `<input_csv>` with the source CSV path and `YYYY-MM-DD` with the audit date. Use the same input file in both commands.
+
+First, run the deterministic checks:
+
+```text
+python skill/scripts/validate_data.py <input_csv> --as-of YYYY-MM-DD
+```
+
+The default stale threshold is 180 days. Findings are written to `output/audit_findings.csv`.
+
+After validation succeeds, build the review context:
+
+```text
+python skill/scripts/build_ai_context.py --records <input_csv> --findings output/audit_findings.csv
+```
+
+Then read `output/ai_context.json` before producing the final review. Use the context and findings from this run as evidence for the review.
+
+## Failure behavior
+
+Stop the workflow if either script fails, or if:
+
+- the input file is missing
+- required columns are missing
+- record IDs are missing or duplicated in the source data
+- findings have missing record IDs or refer to unknown record IDs
+- the generated context is inconsistent with the source records or findings
+
+Check that context counts and record-to-finding links agree with the generated findings. The context includes records with findings and may include account peers without findings; it is not a copy of every source record.
+
+Explain the failure and what needs to be resolved before rerunning. Do not produce a final audit from partial output or files left over from an earlier run.
 
 ## What to check
+
+Use the script findings to review the categories below. Do not redo deterministic validation unnecessarily.
 
 ### Missing fields
 
@@ -131,13 +175,32 @@ Use deterministic checks for things that can be checked reliably with code, such
 
 Use AI to help explain the findings and put them into a GTM context.
 
+After the scripts run:
+
+- Use the generated findings as evidence and preserve original values when describing them.
+- Group related issues, including issues across records, and include every affected `record_id`.
+- Identify which issues need attention first and explain the priority.
+- Explain the likely business impact on GTM work, such as outreach, segmentation, or account review.
+- Recommend a practical next action for each issue.
+- Distinguish confirmed issues from items needing verification.
+
 For example, AI can explain why a missing industry field may affect segmentation, but it should not guess what the industry should be.
 
 When the data is ambiguous, say that the record needs review.
 
 ## Output
 
-Start with a short summary:
+Use these sections in the final response, in this order:
+
+```markdown
+## Audit summary
+## Priority findings
+## GTM impact
+## Recommended actions
+## Items needing verification
+```
+
+In `Audit summary`, include the audit date, stale threshold, and a short summary:
 
 - records reviewed
 - records with issues
@@ -145,12 +208,14 @@ Start with a short summary:
 - findings by type
 - findings by severity
 
-Then provide the detailed findings:
+In `Priority findings`, group and order the detailed findings by what needs attention first. Every finding must include its `record_id`; grouped findings must list all affected record IDs. Preserve original values in the details:
 
 | Record ID | Account | Field | Issue Type | Severity | Current Value | Reason | Recommended Action |
 |---|---|---|---|---|---|---|---|
 
-Recommended actions:
+In `GTM impact`, explain how the findings could affect GTM work and link the impact to the relevant record IDs. Do not claim an actual business outcome without evidence.
+
+In `Recommended actions`, give practical next steps tied to record IDs. Suggested actions include:
 
 - Review
 - Verify
@@ -159,15 +224,24 @@ Recommended actions:
 - Merge
 - No action
 
+In `Items needing verification`, list ambiguous findings with their record IDs, what remains uncertain, and what a person should verify. If there are none, say so.
+
 ## Important guardrails
 
 - Use the CSV as the source for the audit.
+- Do not redo deterministic validation unnecessarily.
 - Do not invent missing company or contact information.
-- Do not use web search to fill gaps during the audit.
-- Keep the original CSV unchanged.
-- Do not automatically overwrite CRM or source data.
+- Do not use web search to replace the supplied data or fill gaps during the audit.
+- Keep the original CSV unchanged; do not silently modify it.
+- Do not apply remediation automatically or overwrite CRM or source data.
 - Clearly separate confirmed issues from items that just need verification.
 - When the evidence is unclear, recommend review instead of guessing.
+
+## Design notes
+
+Python handles deterministic checks. The skill handles interpretation and GTM recommendations.
+
+CSV is the external structured data source for this POC. Source data is read-only, and recommended fixes require human review.
 
 ## Goal
 
