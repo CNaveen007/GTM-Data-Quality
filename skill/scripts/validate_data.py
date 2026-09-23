@@ -196,33 +196,35 @@ def validate_rows(rows, as_of, stale_days):
     return findings
 def find_duplicates(rows):
     findings = []
-    seen_contacts = Counter()
-    seen_domains = Counter()
+    email_counts = Counter()
+    contact_name_counts = Counter()
+    # Count repeated contact emails and, when email is missing,
+    # repeated first/last name combinations.
     for row in rows:
-        contact_key = (
-            normalize(row.get("contact_first_name")),
-            normalize(row.get("contact_last_name")),
-            normalize(row.get("contact_email")),
-        )
-        domain_key = normalize(row.get("company_domain"))
-        if all(contact_key):
-            seen_contacts[contact_key] += 1
-        if domain_key:
-            seen_domains[domain_key] += 1
-    duplicate_contact_keys = {
-        key for key, count in seen_contacts.items() if count > 1
+        email = normalize(row.get("contact_email"))
+        first_name = normalize(row.get("contact_first_name"))
+        last_name = normalize(row.get("contact_last_name"))
+
+        if email:
+            email_counts[email] += 1
+        elif first_name and last_name:
+            contact_name_counts[(first_name, last_name)] += 1
+    duplicate_emails = {
+        email
+        for email, count in email_counts.items()
+        if count > 1
     }
-    duplicate_domain_keys = {
-        key for key, count in seen_domains.items() if count > 1
+    duplicate_names = {
+        name_key
+        for name_key, count in contact_name_counts.items()
+        if count > 1
     }
     for row in rows:
-        contact_key = (
-            normalize(row.get("contact_first_name")),
-            normalize(row.get("contact_last_name")),
-            normalize(row.get("contact_email")),
-        )
-        domain_key = normalize(row.get("company_domain"))
-        if contact_key in duplicate_contact_keys:
+        email = normalize(row.get("contact_email"))
+        first_name = normalize(row.get("contact_first_name"))
+        last_name = normalize(row.get("contact_last_name"))
+        # Duplicate email: strongest duplicate signal
+        if email and email in duplicate_emails:
             findings.append(
                 {
                     "record_id": row.get("record_id", ""),
@@ -231,21 +233,39 @@ def find_duplicates(rows):
                     "issue_type": "Duplicate",
                     "severity": "Medium",
                     "current_value": row.get("contact_email", ""),
-                    "reason": "The same contact information appears on multiple records.",
-                    "recommended_action": "Review the records for duplication.",
+                    "reason": (
+                        "The same contact email appears on multiple records."
+                    ),
+                    "recommended_action": (
+                        "Review the records for duplication."
+                    ),
                 }
             )
-        elif domain_key in duplicate_domain_keys:
+        # Duplicate name only when email is unavailable
+        elif (
+            not email
+            and first_name
+            and last_name
+            and (first_name, last_name) in duplicate_names
+        ):
             findings.append(
                 {
                     "record_id": row.get("record_id", ""),
                     "account_name": row.get("account_name", ""),
-                    "field": "company_domain",
+                    "field": "contact_first_name",
                     "issue_type": "Duplicate",
-                    "severity": "Low",
-                    "current_value": row.get("company_domain", ""),
-                    "reason": "The company domain appears on multiple records.",
-                    "recommended_action": "Review related records to confirm they are expected.",
+                    "severity": "Medium",
+                    "current_value": (
+                        f"{row.get('contact_first_name', '')} "
+                        f"{row.get('contact_last_name', '')}"
+                    ).strip(),
+                    "reason": (
+                        "The same contact name appears on multiple records "
+                        "without an email to distinguish them."
+                    ),
+                    "recommended_action": (
+                        "Review the records for duplication."
+                    ),
                 }
             )
     return findings
