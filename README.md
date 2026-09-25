@@ -89,6 +89,12 @@ The generated files are:
 - `output/ai_context.json`: summary counts and source records linked to their findings, plus relevant account peers for account-domain conflicts. It is not a copy of every source record.
 
 The stale threshold defaults to 180 days and can be changed with `--stale-days`. Without `--as-of`, validation uses the current date. Both scripts support `--output` for a custom output path.
+Once it creates `ai_context.json` then start running agent skill review 
+```sh
+codex
+```
+Then enter the following prompt in codex
+ `Review the GTM audit results and give me the final review. `
 
 Stop if either command fails. Resolve the error before continuing, and do not use output left over from an earlier run as evidence for a new audit.
 
