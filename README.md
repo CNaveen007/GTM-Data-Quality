@@ -410,6 +410,12 @@ The source CSV is not silently modified.
 
 The current POC does not perform live CRM writes or automatic remediation.
 
+## Demo
+
+A short recording of the working GTM Data Quality Agent Skill is available here:
+
+[Watch the demo](https://drive.google.com/drive/folders/1WYfQzE2XImZ28QSPZ2i8TgXP6PU72Pde?usp=drive_link)
+
 ## Summary
 
 The main design principle of this project is:
