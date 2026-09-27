@@ -410,27 +410,6 @@ The source CSV is not silently modified.
 
 The current POC does not perform live CRM writes or automatic remediation.
 
-## Demo flow
-
-The intended demo is:
-
-1. Start with the one-pager and explain the GTM problem.
-2. Run `validate_data.py`.
-3. Show a few findings from `audit_findings.csv`.
-4. Run `build_ai_context.py`.
-5. Start Codex.
-6. Ask:
-
-```text
-Review the GTM audit results and give me the final review.
-```
-
-7. Show the final GTM-oriented review.
-8. Explain the AI boundary and human approval step.
-9. Close with the production-hardening plan.
-
-The demo is intentionally focused on showing the working flow rather than walking through every line of code.
-
 ## Summary
 
 The main design principle of this project is:
